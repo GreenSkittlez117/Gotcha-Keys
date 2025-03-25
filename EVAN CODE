@@ -1,9 +1,9 @@
 #include <LiquidCrystal.h>
 
 // Define Buzzer Pin
-const int buzzerPin = 10;  // You can change this if needed
+const int buzzerPin = 10;
 
-// LCD Pin Configuration (Based on Your Wiring)
+// LCD Pin Configuration
 const int rsPin = 12;
 const int enablePin = 11;
 const int d4Pin = 5;
@@ -11,38 +11,31 @@ const int d5Pin = 4;
 const int d6Pin = 3;
 const int d7Pin = 2;
 
-// Initialize LCD (16x2) with Correct Pins
+// Initialize LCD
 LiquidCrystal lcd(rsPin, enablePin, d4Pin, d5Pin, d6Pin, d7Pin);
 
 void setup() {
-    // Start Serial Monitor for Debugging
     Serial.begin(9600);
-
-    // Small delay to allow LCD to initialize properly
     delay(100);
 
     // Initialize LCD
     lcd.begin(16, 2);
-
-    // Display a test message on the LCD to confirm it's working
     lcd.setCursor(0, 0);
     lcd.print("LCD & Buzzer OK!");
     lcd.setCursor(0, 1);
     lcd.print("Adjust Contrast");
 
-    // Initialize Buzzer Pin
+    // Setup Buzzer Pin
     pinMode(buzzerPin, OUTPUT);
-
-    // Short buzzer beep to confirm setup is running
     tone(buzzerPin, 1000);
     delay(300);
     noTone(buzzerPin);
 
-    delay(2000);  // Wait before starting loop
+    delay(2000);
 }
 
 void loop() {
-    // Display "Warming Up" Message on LCD
+    // Warming Up
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("Breathalyzer ON");
@@ -50,29 +43,32 @@ void loop() {
     lcd.print("Warming up...");
     Serial.println("LCD: Warming up...");
 
-    // Buzzer short beep (warming up)
     tone(buzzerPin, 1000);
     delay(500);
     noTone(buzzerPin);
-    
-    delay(2000);  // Short wait
+    delay(2000);
 
-    // Display "Blow into Sensor" Message
+    // Prompt to Blow
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("Blow into sensor");
     lcd.setCursor(0, 1);
-    lcd.print("Beep=measuring");
+    lcd.print("Keep blowing...");
     Serial.println("LCD: Blow into sensor.");
 
-    // Buzzer continuous beep (indicating measurement)
-    tone(buzzerPin, 1500);
-    delay(2000);
-    noTone(buzzerPin);
-    
-    delay(2000);  // Short wait
+    // Buzzer ON for duration of blowing (5 seconds)
+    unsigned long blowDuration = 5000; // 5 seconds
+    unsigned long startTime = millis();
 
-    // Display "Checking Result" Message
+    tone(buzzerPin, 1500);
+    while (millis() - startTime < blowDuration) {
+        // Could add countdown or animation here
+    }
+    noTone(buzzerPin);
+
+    delay(500);
+
+    // Checking Result
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("Checking result");
@@ -80,25 +76,39 @@ void loop() {
     lcd.print("Please wait...");
     Serial.println("LCD: Checking result.");
 
-    delay(2000);  // Processing simulation
+    delay(2000);
 
-    // Simulated Alcohol Level Display
+    // === Simulate BAC Value ===
+    float bac = random(0, 120) / 1000.0; // Simulated BAC between 0.000 - 0.119
+    Serial.print("Simulated BAC: ");
+    Serial.println(bac, 3); // 3 decimal places
+
+    // === Display Result ===
     lcd.clear();
     lcd.setCursor(0, 0);
-    lcd.print("Result: Sober!");
+    lcd.print("BAC: ");
+    lcd.print(bac, 3);
+
     lcd.setCursor(0, 1);
-    lcd.print("Drive safe :)");
-    Serial.println("LCD: Result: Sober!");
+    if (bac >= 0.08) {
+        lcd.print("You're DRUNK!");
+        Serial.println("Result: DRUNK");
 
-    // Buzzer double beep (success signal)
-    tone(buzzerPin, 1200);
-    delay(300);
-    noTone(buzzerPin);
-    delay(300);
-    tone(buzzerPin, 1200);
-    delay(300);
-    noTone(buzzerPin);
-    
-    delay(3000); // Shortened cycle time
+        tone(buzzerPin, 800);
+        delay(1000);
+        noTone(buzzerPin);
+    } else {
+        lcd.print("Sober. Drive Safe");
+        Serial.println("Result: Sober");
+
+        tone(buzzerPin, 1200);
+        delay(300);
+        noTone(buzzerPin);
+        delay(300);
+        tone(buzzerPin, 1200);
+        delay(300);
+        noTone(buzzerPin);
+    }
+
+    delay(5000); // Wait before next test
 }
-
