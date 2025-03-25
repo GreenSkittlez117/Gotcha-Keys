@@ -1,1 +1,47 @@
+#include <LiquidCrystal.h>
+
+// Define LCD pin connections (for parallel interface)
+const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+
+#define led_pin 13  // LED to indicate low battery
+#define batteryPin A0  // Battery voltage measurement pin
+
+void setup() {
+  lcd.begin(16, 2); // Initialize LCD (16x2)
+  delay(100);  // Allow LCD to initialize
+
+  lcd.setCursor(0, 0);
+  lcd.print("Battery Monitor"); // Startup message
+  delay(2000); // Show for 2 sec
+  lcd.clear();
+
+  pinMode(led_pin, OUTPUT);
+  digitalWrite(led_pin, LOW);
+}
+
+void loop() {
+  printVolts();
+  delay(1000); // Update every second
+}
+
+void printVolts() {
+  int sensorValue = analogRead(batteryPin); // Read the voltage from A0
+  float voltage = sensorValue * (5.00 / 1023.00) * 2; // Convert to actual voltage
+
+  lcd.setCursor(0, 0);
+  lcd.print("Voltage: ");
+  lcd.print(voltage);
+  lcd.print(" V   ");  // Spaces to clear old digits
+
+  if (voltage < 6.50) { // If voltage is low
+    digitalWrite(led_pin, HIGH);
+    lcd.setCursor(0, 1);
+    lcd.print("LOW BATTERY!   ");
+  } else {
+    digitalWrite(led_pin, LOW);
+    lcd.setCursor(0, 1);
+    lcd.print("Battery OK     ");  // Spaces to clear old text
+  }
+}
 
