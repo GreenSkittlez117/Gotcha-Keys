@@ -1,230 +1,168 @@
 #include <LiquidCrystal.h>
 #include <Servo.h>
+#include <SPI.h>
+#include <MFRC522.h>
 
-byte Pass[8] ={
-  B00000,
-  B00000,
-  B00001,
-  B00011,
-  B10110,
-  B11100, 
-  B01000,
-  B00000
-};
-byte Fail[8] ={
-  B00000,
-  B10001,
-  B11011,
-  B01110,
-  B01110,
-  B11011, 
-  B10001,  
-  B00000 
-};
-// The above code will most likely be in a custom library.
-int LEDG = 9;
-int LEDR = 8;
-int PBG = 11;
-int PBF = 10;
-int Reset = 12;
-/*These Two LEDS are how I simulate a passing and failing score 
-for the ID */
-// Math Variables
-int even;
-int num;
-// DIO
-const int buzzerPin = 13;
-int seconds = 0;
-const int rs = 7, en = 6, d4 = 2, d5 = 3, d6 = 4, d7 = 5;
-LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
-Servo MYS;
-unsigned long startTime;
-bool buttonStateP = false;
-bool buttonStateF = false;
-bool IDVALID = false;
-  
-  void setup() {
+// === Pin Configuration ===
+#define RST_PIN 9
+#define SS_PIN 10
+const int buzzerPin = 3;
+const int sensorPin = A0;
+const int servoPin = 6;
+
+// LCD: rs, en, d4, d5, d6, d7
+LiquidCrystal lcd(A3, A1, 4, 5, A2, 7);
+Servo lockServo;
+MFRC522 rfid(SS_PIN, RST_PIN);
+
+// === Your authorized RFID tag UID ===
+byte authorizedUID[4] = { 0xB1, 0x25, 0xF9, 0x04 }; // Your actual tag UID
+
+// === State Flags ===
+bool testReady = false;
+bool boxLocked = false;
+
+void setup() {
   Serial.begin(9600);
+  SPI.begin();
+  rfid.PCD_Init();
+
+  pinMode(buzzerPin, OUTPUT);
+  lockServo.attach(servoPin);
+  lockServo.write(90); // Start UNLOCKED
+
   lcd.begin(16, 2);
-
-  // Display "Simulation Starting" initially
   lcd.setCursor(0, 0);
-  lcd.print("Warm Up Starting");
+  lcd.print("Scan RFID Tag");
   lcd.setCursor(0, 1);
-  lcd.print("Time: 0 sec");
+  lcd.print("to Lock Box");
 
-  startTime = millis(); // Store the start time
-  
-  pinMode(PBG, INPUT);
-  pinMode(PBF, INPUT);
-  pinMode(LEDG, OUTPUT);
-  pinMode(LEDR, OUTPUT);
-  lcd.createChar(0, Pass);  // Create the custom character, stores bitmap in position 0 
-  lcd.createChar(1, Fail);  // Create the custom character, stores bitmap in position 0   
-  MYS.attach(A4);  // Attach the servo to pin 9
-  MYS.write(0);
-  
-  }
+  tone(buzzerPin, 1000); delay(200); noTone(buzzerPin);
+  delay(200);
+  tone(buzzerPin, 1200); delay(200); noTone(buzzerPin);
+}
 
 void loop() {
-  unsigned long elapsedTime = (millis() - startTime) / 1000; // Convert ms to seconds
-	
-  if (elapsedTime < 1) {  // Display for 5 seconds
-    lcd.setCursor(6, 1);
-    lcd.print(elapsedTime); // Update the time dynamically
-    Serial.print("Time: ");
-    Serial.print(elapsedTime);
-    Serial.println(" sec");
-  } 
-  else 
-  {  // After 5 seconds, switch to "RFID Ready"
-    lcd.clear();
-    while((buttonStateP == false) && (buttonStateF == false))
-    {
- 
-   	  redo:
+  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
+
+  if (isAuthorizedTag()) {
+    if (!boxLocked) {
+      lockBox();
+      delay(1000);
+      runBreathalyzer();
+    } else {
+      // If box is locked, allow retry of test
+      lcd.clear();
       lcd.setCursor(0, 0);
-    lcd.print("RFID Ready");
-    lcd.setCursor(0, 1);
-    lcd.print("Present ID");
-    Serial.print(digitalRead(PBG));
-    Serial.println(" PASS PB Y = 1 N = 0");
-    Serial.print(digitalRead(PBF));
-    Serial.println(" FAIL PB Y = 1 N = 0");
-        delay(200);
-    	if(digitalRead(PBG) == 0)
-    	{
-			lcd.clear();
-          	lcd.setCursor(0,0);
-          	lcd.print("ID Verified");
-            lcd.setCursor(12,0);
-          	lcd.write(byte(0));
-            buttonStateP = true;
-          digitalWrite(LEDG, HIGH);
-          delay(2000);
-          IDVALID = true;
-    	}
-    	else if(digitalRead(PBF) == 0)
-        {
-			lcd.clear();
-          	lcd.setCursor(0,0);
-          	lcd.print("ID Invalid");
-            lcd.setCursor(11,0);
-          	lcd.write(byte(1));
-            buttonStateF = true;
-          digitalWrite(LEDR, HIGH);
-          delay(1500);
-		buttonStateF = false;
-          lcd.clear();
-          IDVALID = false;
-          goto redo;
-          
-        }
-if(IDVALID == true)
-{
-  	delay(2000);
-  	lcd.clear();
-    lcd.setCursor(0,0);
-    lcd.print("Begin Testing");
-  	lcd.setCursor(0, 1);
-  	lcd.print("Breathalyzer");
- 	 delay(2000);
-      	buttonStateP = false;
-		buttonStateF = false;
-      digitalWrite(LEDG, LOW);
-      digitalWrite(LEDR, LOW);
-    delay(500);
+      lcd.print("Re-test Starting");
+      delay(1500);
+      runBreathalyzer();
+    }
+  } else {
     lcd.clear();
-    goto userCom;
-  }
- delay(1000);
-}
-
-userCom:
-    // Short buzzer beep to confirm setup is running
-    tone(buzzerPin, 1000);
-    delay(300);
-    noTone(buzzerPin);
-
-lcd.clear();
     lcd.setCursor(0, 0);
-    lcd.print("Breathalyzer ON");
+    lcd.print("Access Denied");
     lcd.setCursor(0, 1);
-BreathTest:
-lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Blow into sensor");
-    lcd.setCursor(0, 1);
-    lcd.print("Beep=measuring");
-    Serial.println("LCD: Blow into sensor.");
- tone(buzzerPin, 1500);
+    lcd.print("Invalid RFID");
+    tone(buzzerPin, 500); delay(500); noTone(buzzerPin);
     delay(2000);
-    noTone(buzzerPin);
-    
-    delay(2000);  // Short wait
-
-lcd.clear();
+    lcd.clear();
     lcd.setCursor(0, 0);
-    lcd.print("Checking result");
+    lcd.print("Scan RFID Tag");
     lcd.setCursor(0, 1);
-    lcd.print("Please wait...");
-    Serial.println("LCD: Checking result.");
-delay(2000);  // Processing simulation
+    lcd.print("to Lock Box");
+  }
 
-    // Simulated Alcohol Level Display
-   
-
-    // Buzzer double beep (success signal)
-    tone(buzzerPin, 1200);
-    delay(300);
-    noTone(buzzerPin);
-    delay(300);
-    tone(buzzerPin, 1200);
-    delay(300);
-    noTone(buzzerPin);
-    num = num + 1;
-    if(num % 2 == 0)
-    {
-       lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Result: Sober!");
-    lcd.setCursor(0, 1);
-    lcd.print("Drive safe :)");
-    Serial.println("LCD: Result: Sober!");
-   delay(2000);
-      MYS.write(0);
-      lcd.clear();
-      lcd.print("Keys Unlocked");
-      delay(2000);
-      goto BreathTest;
-    }
-    else
-    {
-      lcd.clear();
-      lcd.setCursor(0,0);
-      lcd.print("Alchohol Over");
-      lcd.setCursor(0,1);
-      lcd.print("Limit  :(");
-      delay(2000);
-      lcd.clear();
-      lcd.setCursor(0,0);
-      lcd.print("Call an Uber");
-      lcd.setCursor(0,1);
-      lcd.print("Or Call A Friend");
-      Serial.println("LCD: Result: Drunk!");
-      delay(2000);
-      MYS.write(90);
-      lcd.clear();
-      lcd.print("Keys Locked");
-      delay(2000);
-      goto BreathTest;
-    }
-    delay(3000); // Shortened cycle time
-}
+  rfid.PICC_HaltA(); // Stop reading
 }
 
+bool isAuthorizedTag() {
+  for (byte i = 0; i < 4; i++) {
+    if (rfid.uid.uidByte[i] != authorizedUID[i]) return false;
+  }
+  return true;
+}
 
+void lockBox() {
+  lockServo.write(0);
+  boxLocked = true;
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Box is LOCKED");
+  lcd.setCursor(0, 1);
+  lcd.print("Start Test...");
+  Serial.println("Box locked. Test ready.");
+  tone(buzzerPin, 800); delay(300); noTone(buzzerPin);
+  delay(2000);
+}
 
+void unlockBox() {
+  lockServo.write(90);
+  boxLocked = false;
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("You Passed!");
+  lcd.setCursor(0, 1);
+  lcd.print("Keys: UNLOCKED");
+  Serial.println("Box unlocked.");
+  tone(buzzerPin, 1200); delay(300); noTone(buzzerPin);
+  delay(300);
+  tone(buzzerPin, 1200); delay(300); noTone(buzzerPin);
+  delay(3000);
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Scan RFID Tag");
+  lcd.setCursor(0, 1);
+  lcd.print("to Lock Box");
+}
 
+void runBreathalyzer() {
+  // === Warm-Up ===
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Breathalyzer ON");
+  lcd.setCursor(0, 1);
+  lcd.print("Warming up...");
+  tone(buzzerPin, 1000); delay(500); noTone(buzzerPin);
+  delay(2000);
 
+  // === Blowing ===
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Blow into sensor");
+  lcd.setCursor(0, 1);
+  lcd.print("Keep blowing...");
+  tone(buzzerPin, 1500); delay(5000); noTone(buzzerPin);
 
+  // === Check Result ===
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Checking result");
+  lcd.setCursor(0, 1);
+  lcd.print("Please wait...");
+  delay(2000);
+
+  int sensorValue = analogRead(sensorPin);
+  float bac = 0.000;
+  if (sensorValue >= 350) {
+    bac = map(sensorValue, 350, 1023, 0, 150) / 1000.0;
+  }
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("BAC: ");
+  lcd.print(bac, 3);
+  delay(1500);
+
+  if (bac >= 0.08) {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("You're DRUNK!");
+    lcd.setCursor(0, 1);
+    lcd.print("Keys: LOCKED");
+    tone(buzzerPin, 800); delay(1000); noTone(buzzerPin);
+    Serial.println("Failed test. Box remains locked.");
+  } else {
+    unlockBox();
+  }
+}
