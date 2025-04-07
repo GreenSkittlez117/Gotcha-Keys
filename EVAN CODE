@@ -1,96 +1,138 @@
 #include <LiquidCrystal.h>
+#include <Servo.h>
 
-// Define Buzzer Pin
-const int buzzerPin = 3;  // Your passive buzzer on pin 3
+// === Pin Assignments ===
+const int buzzerPin = 3;
+const int sensorPin = A0;
+const int buttonPin = 2;
+const int servoPin = 9;
 
-// LCD Pin Configuration
-const int rsPin = 12;
-const int enablePin = 11;
-const int d4Pin = 4;
-const int d5Pin = 5;
-const int d6Pin = 6;
-const int d7Pin = 7;
+// LCD pin setup
+const int rs = 12, en = 11, d4 = 4, d5 = 5, d6 = 6, d7 = 7;
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
-// Initialize LCD
-LiquidCrystal lcd(rsPin, enablePin, d4Pin, d5Pin, d6Pin, d7Pin);
+// Servo
+Servo lockServo;
 
 void setup() {
-    Serial.begin(9600);
-    delay(100);
+  Serial.begin(9600);
 
-    // Initialize LCD
-    lcd.begin(16, 2);
-    lcd.setCursor(0, 0);
-    lcd.print("Breathalyzer");
-    lcd.setCursor(0, 1);
-    lcd.print("Subsystem Ready");
+  pinMode(buzzerPin, OUTPUT);
+  pinMode(buttonPin, INPUT_PULLUP);
+  lockServo.attach(servoPin);
 
-    pinMode(buzzerPin, OUTPUT);
+  // Lock at startup
+  lockServo.write(0);
+  Serial.println("Servo set to LOCKED (0)");
 
-    // Test beep sequence
-    tone(buzzerPin, 1000);
-    delay(300);
-    noTone(buzzerPin);
-    delay(300);
-    tone(buzzerPin, 1200);
-    delay(300);
-    noTone(buzzerPin);
+  // LCD startup
+  lcd.begin(16, 2);
+  lcd.setCursor(0, 0);
+  lcd.print("Press Button");
+  lcd.setCursor(0, 1);
+  lcd.print("to Start Test");
+
+  // Buzzer beep test
+  tone(buzzerPin, 1000); delay(200); noTone(buzzerPin);
+  delay(200);
+  tone(buzzerPin, 1200); delay(200); noTone(buzzerPin);
 }
 
 void loop() {
-    // === WARMING UP ===
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Breathalyzer ON");
-    lcd.setCursor(0, 1);
-    lcd.print("Warming up...");
-    Serial.println("LCD: Warming up...");
-
-    tone(buzzerPin, 1000);
-    delay(500);
-    noTone(buzzerPin);
-    delay(2000);
-
-    // === BLOWING ===
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Blow into sensor");
-    lcd.setCursor(0, 1);
-    lcd.print("Keep blowing...");
-    Serial.println("LCD: Blow prompt");
-
-    tone(buzzerPin, 1500);         // Buzzer ON during blowing
-    delay(5000);                   // Simulate 5 seconds of blowing
-    noTone(buzzerPin);            // Buzzer OFF after blowing
-
-    delay(500);
-
-    // === CHECKING RESULT ===
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Checking result");
-    lcd.setCursor(0, 1);
-    lcd.print("Please wait...");
-    Serial.println("LCD: Checking result");
-
-    delay(2000);
-
-    // === RESULT (BAC: blank) ===
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("BAC:           ");  // Just "BAC:" with no number
-    lcd.setCursor(0, 1);
-    lcd.print("Sober. Drive Safe");
-    Serial.println("Result: Sober");
-
-    // Beep pattern for "sober" result
-    tone(buzzerPin, 1200);
-    delay(300);
-    noTone(buzzerPin);
-    delay(300);
-    tone(buzzerPin, 1200);
-    delay(300);
-    noTone(buzzerPin);
-
-    delay(5000); // Wait before repeating
+  // Wait for button press
+  if (digitalRead(buttonPin) == LOW) {
+    delay(50); // Debounce
+    while (digitalRead(buttonPin) == LOW);
+    delay(50);
+    runBreathalyzer();
+  }
 }
+
+void runBreathalyzer() {
+  lockServo.attach(servoPin);      // Re-attach in case it's lost
+  lockServo.write(0);              // Lock at start
+  Serial.println("Locking servo to 0 (start of test)");
+
+  // === WARMING UP ===
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Breathalyzer ON");
+  lcd.setCursor(0, 1);
+  lcd.print("Warming up...");
+  Serial.println("Warming up");
+  tone(buzzerPin, 1000); delay(500); noTone(buzzerPin);
+  delay(2000);
+
+  // === BLOWING ===
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Blow into sensor");
+  lcd.setCursor(0, 1);
+  lcd.print("Keep blowing...");
+  Serial.println("Blowing...");
+  tone(buzzerPin, 1500); delay(5000); noTone(buzzerPin);
+
+  // === CHECKING RESULT ===
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Checking result");
+  lcd.setCursor(0, 1);
+  lcd.print("Please wait...");
+  Serial.println("Checking...");
+  delay(2000);
+
+  // === READ SENSOR ===
+  int sensorValue = analogRead(sensorPin);
+  Serial.print("Sensor Value: "); Serial.println(sensorValue);
+
+  float bac = 0.000;
+  if (sensorValue >= 350) {
+    bac = map(sensorValue, 350, 1023, 0, 150) / 1000.0;
+  }
+
+  // === DISPLAY BAC ===
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("BAC: ");
+  lcd.print(bac, 3);
+  delay(1500);
+
+  // === DECIDE RESULT ===
+  lcd.clear();
+  if (bac >= 0.08) {
+    lcd.setCursor(0, 0);
+    lcd.print("You're DRUNK!");
+    lcd.setCursor(0, 1);
+    lcd.print("Keys: LOCKED");
+    Serial.println("BAC too high. Keys stay locked.");
+    
+    lockServo.write(0); // Stay locked
+    Serial.println("Servo set to 0 (LOCKED)");
+    delay(1000);
+    tone(buzzerPin, 800); delay(1000); noTone(buzzerPin);
+  } else {
+    lcd.setCursor(0, 0);
+    lcd.print("You're Sober :)");
+    lcd.setCursor(0, 1);
+    lcd.print("Keys: UNLOCKED");
+    Serial.println("BAC OK. Unlocking keys.");
+    
+    lockServo.write(90); // Unlock
+    Serial.println("Servo set to 90 (UNLOCKED)");
+    delay(1000);
+    tone(buzzerPin, 1200); delay(300); noTone(buzzerPin);
+    delay(300);
+    tone(buzzerPin, 1200); delay(300); noTone(buzzerPin);
+  }
+
+  delay(3000);
+
+  // === Back to Idle ===
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Press Button");
+  lcd.setCursor(0, 1);
+  lcd.print("to Start Test");
+}
+
+
