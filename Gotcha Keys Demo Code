@@ -2,6 +2,7 @@
 #include <Servo.h>
 #include <SPI.h>
 #include <MFRC522.h>
+#include <EEPROM.h>
 
 // === Pin Configuration ===
 #define RST_PIN 9
@@ -15,12 +16,12 @@ LiquidCrystal lcd(A3, A1, 4, 5, A2, 7);
 Servo lockServo;
 MFRC522 rfid(SS_PIN, RST_PIN);
 
-// === Your authorized RFID tag UID ===
-byte authorizedUID[4] = { 0xB1, 0x25, 0xF9, 0x04 }; // Your actual tag UID
+// === Authorized RFID Tag UID ===
+byte authorizedUID[4] = { 0xB1, 0x25, 0xF9, 0x04 }; // Replace with your tag UID
 
 // === State Flags ===
-bool testReady = false;
 bool boxLocked = false;
+bool testReady = false;
 
 void setup() {
   Serial.begin(9600);
@@ -29,17 +30,36 @@ void setup() {
 
   pinMode(buzzerPin, OUTPUT);
   lockServo.attach(servoPin);
-  lockServo.write(90); // Start UNLOCKED
-
   lcd.begin(16, 2);
-  lcd.setCursor(0, 0);
-  lcd.print("Scan RFID Tag");
-  lcd.setCursor(0, 1);
-  lcd.print("to Lock Box");
 
-  tone(buzzerPin, 1000); delay(200); noTone(buzzerPin);
-  delay(200);
-  tone(buzzerPin, 1200); delay(200); noTone(buzzerPin);
+  // === Restore previous lock state from EEPROM
+  byte lastState = EEPROM.read(0);
+
+  if (lastState == 1) {
+    // Box was locked due to failed test
+    lockServo.write(90);
+    boxLocked = true;
+    testReady = false;
+
+    lcd.setCursor(0, 0);
+    lcd.print("LOCKED: Rebooted");
+    lcd.setCursor(0, 1);
+    lcd.print("Scan to test");
+  } else {
+    // Normal unlocked start
+    lockServo.write(180);
+    boxLocked = false;
+    testReady = false;
+
+    lcd.setCursor(0, 0);
+    lcd.print("Scan RFID Tag");
+    lcd.setCursor(0, 1);
+    lcd.print("to Lock Box");
+  }
+
+  tone(buzzerPin, 600); delay(100); noTone(buzzerPin);
+  delay(100);
+  tone(buzzerPin, 700); delay(100); noTone(buzzerPin);
 }
 
 void loop() {
@@ -48,14 +68,8 @@ void loop() {
   if (isAuthorizedTag()) {
     if (!boxLocked) {
       lockBox();
-      delay(1000);
-      runBreathalyzer();
-    } else {
-      // If box is locked, allow retry of test
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("Re-test Starting");
-      delay(1500);
+    } else if (!testReady) {
+      startTestPrompt();
       runBreathalyzer();
     }
   } else {
@@ -64,13 +78,9 @@ void loop() {
     lcd.print("Access Denied");
     lcd.setCursor(0, 1);
     lcd.print("Invalid RFID");
-    tone(buzzerPin, 500); delay(500); noTone(buzzerPin);
+    tone(buzzerPin, 500); delay(200); noTone(buzzerPin);
     delay(2000);
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Scan RFID Tag");
-    lcd.setCursor(0, 1);
-    lcd.print("to Lock Box");
+    showScanMessage();
   }
 
   rfid.PICC_HaltA(); // Stop reading
@@ -84,57 +94,79 @@ bool isAuthorizedTag() {
 }
 
 void lockBox() {
-  lockServo.write(0);
+  lockServo.write(90); // Locked
   boxLocked = true;
+  testReady = false;
+
+  EEPROM.write(0, 1); // Save locked state
+
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("Box is LOCKED");
+  lcd.print("Door Locked");
   lcd.setCursor(0, 1);
-  lcd.print("Start Test...");
-  Serial.println("Box locked. Test ready.");
-  tone(buzzerPin, 800); delay(300); noTone(buzzerPin);
+  lcd.print("Secured.");
+  Serial.println("Box locked.");
+  tone(buzzerPin, 600); delay(150); noTone(buzzerPin);
   delay(2000);
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Scan RFID to");
+  lcd.setCursor(0, 1);
+  lcd.print("Begin Test");
+}
+
+void startTestPrompt() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("RFID Accepted");
+  lcd.setCursor(0, 1);
+  lcd.print("Starting Test...");
+  Serial.println("Test starting...");
+  tone(buzzerPin, 650); delay(200); noTone(buzzerPin);
+  delay(2000);
+  testReady = true;
 }
 
 void unlockBox() {
-  lockServo.write(90);
+  lockServo.write(180); // Unlocked
   boxLocked = false;
+  testReady = false;
+
+  EEPROM.write(0, 0); // Save unlocked state
+
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("You Passed!");
   lcd.setCursor(0, 1);
   lcd.print("Keys: UNLOCKED");
   Serial.println("Box unlocked.");
-  tone(buzzerPin, 1200); delay(300); noTone(buzzerPin);
-  delay(300);
-  tone(buzzerPin, 1200); delay(300); noTone(buzzerPin);
+  tone(buzzerPin, 700); delay(150); noTone(buzzerPin);
+  delay(150);
+  tone(buzzerPin, 800); delay(150); noTone(buzzerPin);
   delay(3000);
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Scan RFID Tag");
-  lcd.setCursor(0, 1);
-  lcd.print("to Lock Box");
+  showScanMessage();
 }
 
 void runBreathalyzer() {
-  // === Warm-Up ===
+  // Warm-Up
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Breathalyzer ON");
   lcd.setCursor(0, 1);
   lcd.print("Warming up...");
-  tone(buzzerPin, 1000); delay(500); noTone(buzzerPin);
+  tone(buzzerPin, 650); delay(200); noTone(buzzerPin);
   delay(2000);
 
-  // === Blowing ===
+  // Blowing
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Blow into sensor");
   lcd.setCursor(0, 1);
   lcd.print("Keep blowing...");
-  tone(buzzerPin, 1500); delay(5000); noTone(buzzerPin);
+  tone(buzzerPin, 750); delay(3000); noTone(buzzerPin);
 
-  // === Check Result ===
+  // Check Result
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Checking result");
@@ -154,15 +186,37 @@ void runBreathalyzer() {
   lcd.print(bac, 3);
   delay(1500);
 
-  if (bac >= 0.08) {
+  if (bac >= 0.05) {         //change to .08 this is a test value
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("You're DRUNK!");
     lcd.setCursor(0, 1);
-    lcd.print("Keys: LOCKED");
-    tone(buzzerPin, 800); delay(1000); noTone(buzzerPin);
+    lcd.print("Scan to Try Again");
+    tone(buzzerPin, 600); delay(500); noTone(buzzerPin);
     Serial.println("Failed test. Box remains locked.");
+    testReady = false;
+    EEPROM.write(0, 1); // Save locked state
+    delay(3000);
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Scan RFID to");
+    lcd.setCursor(0, 1);
+    lcd.print("Begin Test");
   } else {
     unlockBox();
   }
 }
+
+void showScanMessage() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Scan RFID Tag");
+  if (!boxLocked) {
+    lcd.setCursor(0, 1);
+    lcd.print("to Lock Box");
+  } else {
+    lcd.setCursor(0, 1);
+    lcd.print("to Begin Test");
+  }
+}
+
