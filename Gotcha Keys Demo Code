@@ -186,7 +186,7 @@ void runBreathalyzer() {
   lcd.print(bac, 3);
   delay(1500);
 
-  if (bac >= 0.05) {         //change to .08 this is a test value
+  if (bac >= 0.05) {
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("You're DRUNK!");
