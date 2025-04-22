@@ -149,44 +149,49 @@ void unlockBox() {
 }
 
 void runBreathalyzer() {
-  // Warm-Up
+  // === Startup ===
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Breathalyzer ON");
   lcd.setCursor(0, 1);
   lcd.print("Warming up...");
   tone(buzzerPin, 650); delay(200); noTone(buzzerPin);
-  delay(2000);
+  delay(2000);  // 🔄 No change — optional: increase if needed
 
-  // Blowing
+  // === Prompt User to Blow ===
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Blow into sensor");
   lcd.setCursor(0, 1);
   lcd.print("Keep blowing...");
   tone(buzzerPin, 750); delay(3000); noTone(buzzerPin);
+  delay(1000); // 🆕 Added: Let the sensor stabilize after blowing
 
-  // Check Result
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Checking result");
-  lcd.setCursor(0, 1);
-  lcd.print("Please wait...");
-  delay(2000);
+  // === Take Multiple Readings ===
+  int sensorValue = 0;
+  const int samples = 20; // 🆕 Added: number of analog samples to take
+  for (int i = 0; i < samples; i++) {
+    sensorValue += analogRead(sensorPin); // 🆕 Replaces single analogRead()
+    delay(50); // 🆕 Delay between samples (total ~1 second)
+  }
+  sensorValue /= samples; // 🆕 Get the average of the samples
 
-  int sensorValue = analogRead(sensorPin);
-  float bac = 0.000;
-  if (sensorValue >= 350) {
-    bac = map(sensorValue, 350, 1023, 0, 150) / 1000.0;
+  // === Convert to BAC Estimate ===
+  float bac = 0.0;
+  if (sensorValue >= 350) { // ✅ Threshold preserved
+    bac = ((sensorValue - 350) * 0.0002); // 🆕 Replaces integer-based map() with smoother float math
   }
 
+  // === Display BAC ===
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("BAC: ");
-  lcd.print(bac, 3);
+  lcd.print(bac, 3); // ✅ No change — now prints better value due to float math
   delay(1500);
 
+  // === Pass/Fail Logic ===
   if (bac >= 0.05) {
+    // ❌ Fail condition
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("You're DRUNK!");
@@ -195,15 +200,12 @@ void runBreathalyzer() {
     tone(buzzerPin, 600); delay(500); noTone(buzzerPin);
     Serial.println("Failed test. Box remains locked.");
     testReady = false;
-    EEPROM.write(0, 1); // Save locked state
+    EEPROM.write(0, 1); // ✅ Preserved
     delay(3000);
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Scan RFID to");
-    lcd.setCursor(0, 1);
-    lcd.print("Begin Test");
+    showScanMessage();
   } else {
-    unlockBox();
+    // ✅ Success condition
+    unlockBox(); // ✅ Preserved
   }
 }
 
@@ -219,4 +221,3 @@ void showScanMessage() {
     lcd.print("to Begin Test");
   }
 }
-
