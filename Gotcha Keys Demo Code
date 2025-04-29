@@ -83,7 +83,9 @@ void loop() {
     showScanMessage();
   }
 
-  rfid.PICC_HaltA(); // Stop reading
+  rfid.PICC_HaltA();           // Halt communication with tag
+  rfid.PCD_StopCrypto1();      // Stop encryption on PCD side
+  rfid.uid.size = 0;   
 }
 
 bool isAuthorizedTag() {
@@ -190,7 +192,7 @@ void runBreathalyzer() {
   delay(1500);
 
   // === Pass/Fail Logic ===
-  if (bac >= 0.05) {
+  if (bac >= 0.04) {   // WILL BE CHANGED TO 0.08 AFTER EXPERIMENTS ARE CONDUCTED (Will only blow that high when a user actually blows into the sensor so they have to be drunk)
     // ❌ Fail condition
     lcd.clear();
     lcd.setCursor(0, 0);
